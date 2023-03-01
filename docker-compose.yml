@@ -1,0 +1,48 @@
+version: '3'
+
+services:
+
+  cassandra:
+    image: cassandra
+    expose:
+      - 9042
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status | grep 'UN'"]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+
+  traefik:
+      image: traefik:v2.9.6
+      restart: always
+      command:
+        - --accesslog
+        - --api.insecure=true
+        - --providers.docker
+        - --providers.docker.exposedbydefault=false
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+      ports:
+        - "80:80"
+        - "8080:8080"
+
+  bookservice:
+    image: stalind10/app-books:1.0.0
+    restart: always
+    environment:
+      - CASSANDRA_URI=cassandra
+      - CASSANDRA_PORT=9042
+      - CASSANDRA_KEYSPACE=distribuida
+      - CASSANDRA_DATACENTER=datacenter1
+      - CASSANDRA_REPLICAS=1
+      - CASSANDRA_TABLE=books
+      - SERVER_PORT=7000
+    deploy:
+      replicas: 3
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.bookservice.rule=Host(`book.localhost`)
+      - traefik.http.services.bookservice.loadbalancer.server.port=7000
